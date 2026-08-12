@@ -1,0 +1,74 @@
+{
+  "name": "roi_D_curved_v2",
+  "category": "curved surface",
+  "center": [
+    1.6062612533569336,
+    -2.964165449142456,
+    6.490692138671875
+  ],
+  "radius": 0.14136002612911597,
+  "passes_all_checks": true,
+  "frozen": false,
+  "score_components": {
+    "geometry_confidence": 0.8463276644973622,
+    "density_confidence": 0.8813191626389202,
+    "normal_coherence": 0.3327291700575087,
+    "semantic_purity": 0.9,
+    "connectivity_confidence": 0.85
+  },
+  "total_confidence": 0.7870046990678288,
+  "diagnostics": {
+    "number_of_gaussians": 160,
+    "local_spacing": 0.008612704111247826,
+    "scene_median_spacing": 0.010425427505923266,
+    "spacing_ratio": 0.8261247902164653,
+    "PCA_eigenvalues": [
+      0.00019581695460770218,
+      0.0015797169590799234,
+      0.0030289573283795407
+    ],
+    "estimated_curvature": 0.040757063485184646,
+    "normal_angle_mean": 22.851703643798828,
+    "normal_angle_std": 16.628324508666992,
+    "normal_angle_range": [
+      2.0364394187927246,
+      86.26985931396484
+    ],
+    "normal_angle_spread_p95": 55.02718734741211,
+    "normal_confidence": 0.9031864404678345,
+    "mean_normal": [
+      0.05237376317381859,
+      0.7613614201545715,
+      -0.6462087631225586
+    ],
+    "semantic_IDs": [
+      0,
+      1
+    ],
+    "semantic_counts": [
+      144,
+      16
+    ],
+    "dominant_semantic_fraction": 0.9,
+    "connected_component_count": 16,
+    "largest_component_fraction": 0.85,
+    "estimated_number_of_surface_components": 24,
+    "axes": [
+      [
+        -0.9954348147166706,
+        -0.0008226940982745401,
+        0.095440310269866
+      ],
+      [
+        0.07372468563446721,
+        0.6284359451163812,
+        0.7743596926582503
+      ],
+      [
+        -0.06061518273573558,
+        0.7778609040568255,
+        -0.6255063657244522
+      ]
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "name": "roi_B_junction",
+  "category": "sharp junction",
+  "center": [
+    9.681763648986816,
+    8.99536418914795,
+    -0.1432567834854126
+  ],
+  "radius": 0.16126966005697724,
+  "passes_all_checks": true,
+  "frozen": true,
+  "score_components": {
+    "geometry_confidence": 0.0,
+    "density_confidence": 0.5163129685334754,
+    "normal_coherence": 0.0,
+    "semantic_purity": 1.0,
+    "connectivity_confidence": 0.39622641509433965
+  },
+  "total_confidence": 0.2868809075441723,
+  "diagnostics": {
+    "number_of_gaussians": 53,
+    "local_spacing": 0.01773663529593806,
+    "scene_median_spacing": 0.010425427505923266,
+    "spacing_ratio": 1.7012861377493527,
+    "PCA_eigenvalues": [
+      0.0002783046625212231,
+      0.004702032000964465,
+      0.007107732502789278
+    ],
+    "estimated_curvature": 0.023023086538473354,
+    "normal_angle_mean": 15.803244590759277,
+    "normal_angle_std": 9.605488777160645,
+    "normal_angle_range": [
+      0.5475120544433594,
+      39.141300201416016
+    ],
+    "normal_angle_spread_p95": 35.37772750854492,
+    "normal_confidence": 0.9402965903282166,
+    "mean_normal": [
+      -0.766553521156311,
+      -0.6421209573745728,
+      -0.008735590614378452
+    ],
+    "semantic_IDs": [
+      5
+    ],
+    "semantic_counts": [
+      53
+    ],
+    "dominant_semantic_fraction": 1.0,
+    "connected_component_count": 8,
+    "largest_component_fraction": 0.39622641509433965,
+    "estimated_number_of_surface_components": 8,
+    "axes": [
+      [
+        0.3163207983865345,
+        -0.37698071069723504,
+        0.8705324211482952
+      ],
+      [
+        -0.5601017236628422,
+        0.6664179431271462,
+        0.4921109470719961
+      ],
+      [
+        0.7656547600962322,
+        0.6432516372621148,
+        0.00034569002007361904
+      ]
+    ]
+  }
+}

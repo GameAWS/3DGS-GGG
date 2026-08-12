@@ -1,0 +1,76 @@
+{
+  "name": "roi_A_planar_v2",
+  "category": "planar surface",
+  "center": [
+    8.484046936035156,
+    26.032703399658203,
+    -8.029892921447754
+  ],
+  "radius": 0.6826881885174175,
+  "passes_all_checks": false,
+  "frozen": false,
+  "score_components": {
+    "geometry_confidence": 0.7606066424202571,
+    "density_confidence": 0.986366802337881,
+    "normal_coherence": 0.0,
+    "semantic_purity": 0.71875,
+    "connectivity_confidence": 0.125
+  },
+  "total_confidence": 0.4266388488347336,
+  "diagnostics": {
+    "number_of_gaussians": 160,
+    "local_spacing": 0.010270443182456646,
+    "scene_median_spacing": 0.010425427505923266,
+    "spacing_ratio": 0.9851340078496958,
+    "PCA_eigenvalues": [
+      0.0003597078336604835,
+      0.0024108895424431852,
+      0.09740144785620747
+    ],
+    "estimated_curvature": 0.0035909003636961432,
+    "normal_angle_mean": 23.152109146118164,
+    "normal_angle_std": 12.917354583740234,
+    "normal_angle_range": [
+      3.2052791118621826,
+      82.1395034790039
+    ],
+    "normal_angle_spread_p95": 39.20704650878906,
+    "normal_confidence": 0.9620078802108765,
+    "mean_normal": [
+      -0.8291300535202026,
+      -0.4772566556930542,
+      0.2911519408226013
+    ],
+    "semantic_IDs": [
+      6,
+      7,
+      10
+    ],
+    "semantic_counts": [
+      1,
+      44,
+      115
+    ],
+    "dominant_semantic_fraction": 0.71875,
+    "connected_component_count": 53,
+    "largest_component_fraction": 0.125,
+    "estimated_number_of_surface_components": 54,
+    "axes": [
+      [
+        -0.08177388076948491,
+        -0.33609611327857325,
+        -0.9382709816800981
+      ],
+      [
+        0.4341104454022888,
+        -0.8594390196031843,
+        0.27002350411796494
+      ],
+      [
+        0.8971405428451692,
+        0.38523236393448906,
+        -0.2161824973510133
+      ]
+    ]
+  }
+}

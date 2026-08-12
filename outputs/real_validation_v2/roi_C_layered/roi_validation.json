@@ -1,0 +1,74 @@
+{
+  "name": "roi_C_layered",
+  "category": "nearby layered / parallel surfaces",
+  "center": [
+    6.148968696594238,
+    3.03588604927063,
+    0.24239303171634674
+  ],
+  "radius": 0.041701710023693064,
+  "passes_all_checks": true,
+  "frozen": true,
+  "score_components": {
+    "geometry_confidence": 0.43673809465780766,
+    "density_confidence": 0.0,
+    "normal_coherence": 0.0,
+    "semantic_purity": 0.927536231884058,
+    "connectivity_confidence": 0.2463768115942029
+  },
+  "total_confidence": 0.2634345754533007,
+  "diagnostics": {
+    "number_of_gaussians": 69,
+    "local_spacing": 0.0024892702355102094,
+    "scene_median_spacing": 0.010425427505923266,
+    "spacing_ratio": 0.23876912808572276,
+    "PCA_eigenvalues": [
+      5.453543432074443e-06,
+      0.0001962707907977599,
+      0.00044374726277823757
+    ],
+    "estimated_curvature": 0.008448928580132884,
+    "normal_angle_mean": 11.978801727294922,
+    "normal_angle_std": 9.787643432617188,
+    "normal_angle_range": [
+      2.84482479095459,
+      60.86719512939453
+    ],
+    "normal_angle_spread_p95": 22.961978912353516,
+    "normal_confidence": 0.9734565615653992,
+    "mean_normal": [
+      -0.6937950253486633,
+      -0.7056947946548462,
+      -0.14367800951004028
+    ],
+    "semantic_IDs": [
+      5,
+      7
+    ],
+    "semantic_counts": [
+      5,
+      64
+    ],
+    "dominant_semantic_fraction": 0.927536231884058,
+    "connected_component_count": 18,
+    "largest_component_fraction": 0.2463768115942029,
+    "estimated_number_of_surface_components": 20,
+    "axes": [
+      [
+        -0.8643713097838406,
+        0.3870475101453503,
+        0.32102408587651565
+      ],
+      [
+        0.19461570791324867,
+        -0.3311645510114233,
+        0.9232847699311557
+      ],
+      [
+        0.4636668686201254,
+        0.8605371956189269,
+        0.21092361152872396
+      ]
+    ]
+  }
+}

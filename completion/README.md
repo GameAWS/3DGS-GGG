@@ -44,6 +44,26 @@ python completion/run_study.py --out output/study --seeds 5
 # optionally: --render to also save representative qualitative renders
 ```
 
+### Next-stage validation
+
+```bash
+# 9 angles, C0-C3, 5 seeds, hard/soft/adaptive normal affinity
+python completion/run_corner_robustness.py \
+  --out output/next_stage/synthetic/corner_robustness --seeds 5 --render
+
+# real Gaussian Grouping PLY with four controlled region categories
+python completion/run_real_controlled.py \
+  --checkpoint /path/to/scene/point_cloud/iteration_30000/point_cloud.ply \
+  --out outputs/real_validation
+```
+
+The real runner uses `completion.gaussian_model.GaussianModel.load_ply()` and leaves
+`gaussian_renderer` untouched. `discover_real_rois.py` automatically proposes planar,
+junction, layered, and curved ROIs from the observed checkpoint before completion.
+Held-out Gaussians enter evaluation only; completion detects the rim from surviving
+Gaussians and the configured bounds. Add `--smoke-test` only for non-real test PLYs;
+all generated tables and reports are then labelled `SMOKE TEST`.
+
 Outputs:
 - `ablation_summary.csv` — C0-C3 × 4 scenes × S seeds
 - `robustness_summary.csv` — 6 axes × variants × S seeds

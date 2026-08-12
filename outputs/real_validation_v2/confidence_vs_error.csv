@@ -1,0 +1,45 @@
+roi,method,geometry_confidence,support_confidence,semantic_confidence,final_confidence,actual_chamfer_error,term_availability_note,multiplicative_collapse_flag
+roi_A_planar,C0,0.9047299454320988,N/A,N/A,0.893942994835936,0.014420932180363633,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C1-hard,0.9047299454320988,N/A,N/A,0.8845960917296233,0.013992766547284392,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C1-soft,0.9047299454320988,N/A,N/A,0.893942994835936,0.014420932180363633,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C1-adaptive,0.9047299454320988,N/A,N/A,0.893942994835936,0.014420932180363633,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C2-hard,0.9047299454320988,N/A,N/A,0.8845960917296233,0.013992766547284392,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C2-soft,0.9047299454320988,N/A,N/A,0.893942994835936,0.014420932180363633,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C2-adaptive,0.9047299454320988,N/A,N/A,0.893942994835936,0.014420932180363633,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C3-hard,0.9047299454320988,N/A,N/A,0.1065723882301142,0.013906344801776419,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C3-soft,0.9047299454320988,N/A,N/A,0.10819217282698677,0.014336677394303683,historical run did not persist per-term confidence for this method,False
+roi_A_planar,C3-adaptive,0.9047299454320988,0.9876543209876543,0.12057082197530866,0.10819217282698677,0.014336677394303683,all observable terms persisted,False
+roi_A_planar,C3-no-semantic-hard-gate,0.9047299454320988,N/A,N/A,0.10812889634549075,0.014420932180363633,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C0,0.9395450637011719,N/A,N/A,0.06494777736702445,0.062423781571397885,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C1-hard,0.9395450637011719,N/A,N/A,0.44839056860792836,0.040088070956040986,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C1-soft,0.9395450637011719,N/A,N/A,0.0846013038916419,0.062423781571397885,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C1-adaptive,0.9395450637011719,N/A,N/A,0.08460092956056074,0.062423781571397885,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C2-hard,0.9395450637011719,N/A,N/A,0.3570396001324436,0.040088070956040986,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C2-soft,0.9395450637011719,N/A,N/A,0.08033888805039507,0.062423781571397885,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C2-adaptive,0.9395450637011719,N/A,N/A,0.08067096093853415,0.062423781571397885,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C3-hard,0.9395450637011719,N/A,N/A,0.05527655102043996,0.03919132503142684,historical run did not persist per-term confidence for this method,False
+roi_B_junction,C3-soft,0.9395450637011719,N/A,N/A,0.011809865176203846,0.0615987387820221,historical run did not persist per-term confidence for this method,True
+roi_B_junction,C3-adaptive,0.9395450637011719,0.08578661543912675,0.15192385118164062,0.011861735390530136,0.0615987387820221,all observable terms persisted,True
+roi_B_junction,C3-no-semantic-hard-gate,0.9395450637011719,N/A,N/A,0.012394960560852115,0.062423781571397885,historical run did not persist per-term confidence for this method,True
+roi_C_layered,C0,0.9851236108641975,N/A,N/A,0.9852593187932615,0.01381039691869899,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C1-hard,0.9851236108641975,N/A,N/A,0.9826234533593865,0.05106440226860221,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C1-soft,0.9851236108641975,N/A,N/A,0.9852593187932615,0.01381039691869899,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C1-adaptive,0.9851236108641975,N/A,N/A,0.9852593187932615,0.01381039691869899,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C2-hard,0.9851236108641975,N/A,N/A,0.9202929965062708,0.05106440226860221,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C2-soft,0.9851236108641975,N/A,N/A,0.9852593187932615,0.01381039691869899,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C2-adaptive,0.9851236108641975,N/A,N/A,0.9852593187932615,0.01381039691869899,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C3-hard,0.9851236108641975,N/A,N/A,0.17237175207238162,0.03733810591550648,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C3-soft,0.9851236108641975,N/A,N/A,0.12918213257835737,0.010615912030649866,historical run did not persist per-term confidence for this method,False
+roi_C_layered,C3-adaptive,0.9851236108641975,0.9999983180928692,0.13112831049382714,0.12918211919244496,0.010615912030649866,all observable terms persisted,False
+roi_C_layered,C3-no-semantic-hard-gate,0.9851236108641975,N/A,N/A,0.1292789425212866,0.01381039691869899,historical run did not persist per-term confidence for this method,False
+roi_D_curved,C0,0.9232274820753461,N/A,N/A,0.032286489340243654,0.17826137129621444,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C1-hard,0.9232274820753461,N/A,N/A,0.0004091473420241034,0.15987332649304042,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C1-soft,0.9232274820753461,N/A,N/A,0.03460847474346642,0.17826137129621444,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C1-adaptive,0.9232274820753461,N/A,N/A,0.03491266799525552,0.17826137129621444,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C2-hard,0.9232274820753461,N/A,N/A,0.00015253818295393075,0.15987332649304042,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C2-soft,0.9232274820753461,N/A,N/A,0.03305845220888453,0.17826137129621444,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C2-adaptive,0.9232274820753461,N/A,N/A,0.03306632264974153,0.17826137129621444,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C3-hard,0.9232274820753461,N/A,N/A,7.569733049366852e-10,0.15074856294766595,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C3-soft,0.9232274820753461,N/A,N/A,6.901847771349203e-10,0.15074856294766595,historical run did not persist per-term confidence for this method,True
+roi_D_curved,C3-adaptive,0.9232274820753461,0.032733310908092964,0.17330991031024928,0.005336907960210292,0.15772080301851887,all observable terms persisted,True
+roi_D_curved,C3-no-semantic-hard-gate,0.9232274820753461,N/A,N/A,0.0057319283652060215,0.17826137129621444,historical run did not persist per-term confidence for this method,True

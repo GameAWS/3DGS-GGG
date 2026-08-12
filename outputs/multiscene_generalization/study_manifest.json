@@ -1,0 +1,8 @@
+{
+  "checkpoints": [
+    "E:\\3DGS-GGG\\checkpoints\\ramen\\point_cloud\\iteration_30000\\point_cloud.ply"
+  ],
+  "scene_count": 1,
+  "roi_count": 25,
+  "missing_checkpoints_for_target": 2
+}

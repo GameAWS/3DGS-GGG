@@ -153,13 +153,16 @@ def boundary_seam_error(new_xyz, new_attrs, boundary_xyz, boundary_attrs):
 
 
 def corner_angle_error(completed_xyz, new_normals, hole_gt_xyz, hole_gt_surface,
-                       gt_corner_angle):
+                       gt_corner_angle, hole_gt_normals=None,
+                       generated_surface_ids=None):
     """Sharp-feature metric for the L-corner.
 
     Each newly generated point is assigned the GT surface id of its nearest removed-GT
     Gaussian; the mean BIRTH normal per side (oriented to point away from the hole
     centre) defines each recovered plane.  The dihedral angle between the two recovered
-    normals is the recovered corner angle.  If only one side was generated (e.g. the
+    normals is the recovered corner angle.  Normal signs are aligned to the held-out
+    analytic normal for evaluation, which is necessary to distinguish obtuse corners
+    (e.g. 150 deg) from their unoriented 30-deg plane equivalent.  If only one side was generated (e.g. the
     flat fill of C0), the recovered corner is ~0 -> full error.  Returns
     (abs error deg, recovered deg).
     """
@@ -167,16 +170,22 @@ def corner_angle_error(completed_xyz, new_normals, hole_gt_xyz, hole_gt_surface,
     if len(completed_xyz) == 0 or hole_gt_xyz is None or hole_gt_surface is None:
         return float("nan"), float("nan")
     _, gi = cKDTree(hole_gt_xyz).query(completed_xyz, k=1)
-    labels = hole_gt_surface[gi]
+    labels = (hole_gt_surface[gi] if generated_surface_ids is None else
+              np.asarray(generated_surface_ids))
     hole_center = hole_gt_xyz.mean(0)
     groups = []
     for s in np.unique(labels):
         m = labels == s
         if m.sum() < 4:
             continue
-        nn = new_normals[m]
-        # orient toward leaving the hole centre
-        ref = (completed_xyz[m] - hole_center).mean(0)
+        nn = new_normals[m].copy()
+        if hole_gt_normals is not None:
+            if generated_surface_ids is None:
+                ref = hole_gt_normals[gi[m]].mean(0)
+            else:
+                ref = hole_gt_normals[hole_gt_surface == s].mean(0)
+        else:
+            ref = (completed_xyz[m] - hole_center).mean(0)
         flipped = (nn * ref[None, :]).sum(axis=1) < 0
         nn[flipped] = -nn[flipped]
         n = nn.mean(0)
@@ -188,7 +197,7 @@ def corner_angle_error(completed_xyz, new_normals, hole_gt_xyz, hole_gt_surface,
         # only one surface recovered -> recovered corner is ~0 (a flat fill)
         return abs(0.0 - gt_corner_angle), 0.0
     n1, n2 = groups[0], groups[1]
-    d = np.clip(abs(float(np.dot(n1, n2))), 0.0, 1.0)
+    d = np.clip(float(np.dot(n1, n2)), -1.0, 1.0)
     recovered = np.degrees(np.arccos(d))
     return abs(recovered - gt_corner_angle), recovered
 
@@ -256,8 +265,22 @@ def report_metrics(orig_model, hole_model, completed, removed_gt, scene, result,
     out["corner_angle_err"] = float("nan")
     out["recovered_angle"] = float("nan")
     if scene.name == "l_corner" and len(generated_xyz) >= 1:
+        generated_surface_ids = None
+        if result.component_labels is not None and result.surface_label is not None:
+            # Evaluation-only mapping: associate each graph component with the majority
+            # analytic surface among its boundary members.  This prevents spawning
+            # leakage from corrupting the separate MLS/corner-angle diagnostic.
+            boundary_truth = scene.gt_surface[result.boundary_idx]
+            comp_to_surface = {}
+            for component in np.unique(result.component_labels):
+                vals = boundary_truth[result.component_labels == component]
+                unique, counts = np.unique(vals, return_counts=True)
+                comp_to_surface[int(component)] = int(unique[np.argmax(counts)])
+            generated_surface_ids = np.asarray([
+                comp_to_surface[int(component)] for component in result.surface_label])
         err, rec = corner_angle_error(generated_xyz, new_normals, gt_xyz, gt_surface_hole,
-                                      scene.corner_angle)
+                                      scene.corner_angle, gt_normal_hole,
+                                      generated_surface_ids=generated_surface_ids)
         out["corner_angle_err"] = err
         out["recovered_angle"] = rec
 

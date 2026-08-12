@@ -43,6 +43,24 @@ class CompletionResult:
         self.new_attributes = None     # dict of propagated attribute arrays
         self.boundary_spacing = None
         self.components = None         # list of boundary index arrays (per surface comp)
+        # Stage-level instrumentation.  These are pipeline intermediates only; no GT is
+        # consumed here.  The experiment runner compares them with held-out GT later.
+        self.graph_rows = None
+        self.graph_cols = None
+        self.component_labels = None
+        self.fitted_xyz = None          # surface-fit projections before birth jitter
+        self.fitted_normals = None
+        self.normal_affinity = None
+        self.completion_confidence = None
+        self.confidence_terms = None
+        self.pca_eigenvalues = None
+        self.normal_confidence = None
+        self.neighbor_count = None
+        self.local_curvature = None
+        self.spawn_diagnostics = None
+        self.spawn_rule = None
+        self.spawn_budget = None
+        self.spawn_budget_diagnostics = None
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +99,23 @@ def detect_boundary(hole_xyz, kept_xyz, margin_spacing=4.0, k=16):
     return np.sort(rim), spacing
 
 
+def detect_boundary_from_region(kept_xyz, hole_lo, hole_hi, margin_spacing=4.0):
+    """Detect a hole rim without looking at held-out Gaussian coordinates.
+
+    The distance from every surviving point to the configured selection box is used;
+    points within a fixed multiple of the surviving-set spacing form the boundary.
+    This keeps removed GT entirely outside the completion path.
+    """
+    tree = cKDTree(kept_xyz)
+    d_keep, _ = tree.query(kept_xyz, k=min(2, len(kept_xyz)))
+    spacing = float(np.median(d_keep[:, -1]))
+    below = np.maximum(hole_lo[None, :] - kept_xyz, 0.0)
+    above = np.maximum(kept_xyz - hole_hi[None, :], 0.0)
+    distance = np.linalg.norm(below + above, axis=1)
+    rim = np.where(distance < margin_spacing * spacing)[0]
+    return np.sort(rim), spacing
+
+
 # ---------------------------------------------------------------------------
 # Step 5: surface normals via local PCA
 # ---------------------------------------------------------------------------
@@ -103,6 +138,37 @@ def estimate_normals_local_pca(xyz, k=16):
     return normals
 
 
+def estimate_normals_local_pca_at(xyz, query_idx, k=16, return_diagnostics=False):
+    """Estimate PCA normals only at selected support indices.
+
+    Real checkpoints may contain millions of Gaussians, while only the hole boundary
+    needs normals.  This avoids the previous O(N) Python loop over the whole scene.
+    """
+    query_idx = np.asarray(query_idx, dtype=np.int64)
+    tree = cKDTree(xyz)
+    _, neighbours = tree.query(xyz[query_idx], k=min(k, len(xyz)))
+    normals = np.zeros((len(query_idx), 3), dtype=xyz.dtype)
+    eigenvalues = np.zeros((len(query_idx), 3), dtype=np.float32)
+    centroid = xyz.mean(axis=0)
+    for q, original_idx in enumerate(query_idx):
+        nb = xyz[np.atleast_1d(neighbours[q])]
+        mu = nb.mean(axis=0)
+        cov = (nb - mu).T @ (nb - mu) / max(len(nb) - 1, 1)
+        values, vec = np.linalg.eigh(cov)
+        eigenvalues[q] = values
+        normal = vec[:, 0]
+        if normal @ (xyz[original_idx] - centroid) < 0:
+            normal = -normal
+        normals[q] = normal / (np.linalg.norm(normal) + 1e-8)
+    if not return_diagnostics:
+        return normals
+    curvature = eigenvalues[:, 0] / (eigenvalues.sum(axis=1) + 1e-12)
+    confidence = 1.0 - curvature
+    return normals, {"eigenvalues": eigenvalues, "curvature": curvature,
+                     "normal_confidence": confidence,
+                     "neighbor_count": np.full(len(query_idx), min(k, len(xyz)), dtype=np.int32)}
+
+
 # ---------------------------------------------------------------------------
 # Step 6: KNN graph with position / normal / appearance / semantic weights + gating
 # ---------------------------------------------------------------------------
@@ -117,7 +183,10 @@ def _semantic_features(model):
 
 def build_knn_graph(xyz, normals, appearance, semantic=None, k=12,
                     use_normal=True, use_appearance=True, use_semantic=True,
-                    gate_normal=0.8, sigma_pos=None, sigma_app=None):
+                    gate_normal=0.8, sigma_pos=None, sigma_app=None,
+                    normal_affinity="hard", normal_sigma_deg=30.0,
+                    normal_edge_min=0.10, adaptive_min_sigma_deg=5.0,
+                    semantic_gate="hard", semantic_sigma=0.5):
     """Return edges (rows, cols, weights, sigma_pos) of the boundary KNN graph.
 
     Edge weight w = exp(-d_pos^2/2s^2) * [normal term] * [appearance term].
@@ -136,20 +205,60 @@ def build_knn_graph(xyz, normals, appearance, semantic=None, k=12,
         da, _ = cKDTree(appearance).query(appearance, k=min(8, len(appearance)))
         sigma_app = float(np.median(da[:, -1])) + 1e-8
 
+    if normal_affinity not in ("hard", "soft", "adaptive"):
+        raise ValueError("normal_affinity must be hard, soft, or adaptive")
+
+    # Self-tuning bandwidth for the adaptive strategy.  It is estimated once from
+    # each node's spatial neighbours and is therefore identical across corner angles.
+    local_sigma = None
+    if use_normal and normals is not None and normal_affinity == "adaptive":
+        local_sigma = np.full(n, adaptive_min_sigma_deg, dtype=np.float32)
+        for i in range(n):
+            js = np.asarray([j for j in np.atleast_1d(idx[i]) if j != i], dtype=np.int64)
+            if len(js):
+                dots = np.clip(np.abs(normals[js] @ normals[i]), 0.0, 1.0)
+                angles = np.degrees(np.arccos(dots))
+                # Lower-half neighbours normally lie on the same local surface; using
+                # their robust median prevents a second surface from setting bandwidth.
+                q = np.sort(angles)[:max(1, len(angles) // 2)]
+                local_sigma[i] = max(adaptive_min_sigma_deg,
+                                     float(np.median(q)) * 2.0)
+
     for i in range(n):
         for j in idx[i]:
             if i == j:
                 continue
             d2 = np.sum((xyz[i] - xyz[j]) ** 2)
             w = np.exp(-d2 / (2.0 * sigma_pos ** 2))
-            # hard gating: reject edges across incompatible surfaces before weighting
+            # Normal compatibility.  The legacy strategy is a hard dot-product gate.
+            # Soft strategies retain a continuous affinity in the edge weight and use
+            # one global edge-retention threshold for graph partitioning.
             if use_normal and normals is not None:
-                if abs(float(np.dot(normals[i], normals[j]))) < gate_normal:
-                    continue
+                dot = np.clip(abs(float(np.dot(normals[i], normals[j]))), 0.0, 1.0)
+                if normal_affinity == "hard":
+                    if dot < gate_normal:
+                        continue
+                else:
+                    angle = float(np.degrees(np.arccos(dot)))
+                    if normal_affinity == "soft":
+                        sigma_n = normal_sigma_deg
+                    else:
+                        sigma_n = float(np.sqrt(local_sigma[i] * local_sigma[j]))
+                    normal_w = float(np.exp(-(angle ** 2) / (2.0 * sigma_n ** 2)))
+                    if normal_w < normal_edge_min:
+                        continue
+                    w *= normal_w
             if use_semantic and semantic is not None:
-                # incompatible semantics -> different surfaces -> gate out
-                if np.argmax(semantic[i]) != np.argmax(semantic[j]):
-                    continue
+                if semantic_gate == "hard":
+                    if np.argmax(semantic[i]) != np.argmax(semantic[j]):
+                        continue
+                elif semantic_gate == "soft":
+                    si = semantic[i] / (np.linalg.norm(semantic[i]) + 1e-8)
+                    sj = semantic[j] / (np.linalg.norm(semantic[j]) + 1e-8)
+                    w *= np.exp(-(1.0 - np.clip(si @ sj, -1.0, 1.0)) /
+                                max(semantic_sigma, 1e-8))
+                else:
+                    raise ValueError("semantic_gate must be hard or soft")
             if use_appearance and appearance is not None:
                 ad2 = np.sum((appearance[i] - appearance[j]) ** 2)
                 w *= np.exp(-ad2 / (2.0 * sigma_app ** 2))
@@ -321,10 +430,14 @@ def sample_flat_grid(hole_lo, hole_hi, in_plane, surface_axis, surface_value, sp
 
 def surface_model_is_planar(boundary_xyz, boundary_normals, angle_thresh_deg=25.0):
     """Decide whether a boundary patch is planar or curved from its normal spread."""
-    ref = boundary_normals[0]
+    _, vec = np.linalg.eigh(boundary_normals.T @ boundary_normals)
+    ref = vec[:, -1]
     dots = np.clip(np.abs(boundary_normals @ ref), 0.0, 1.0)
     spread = np.degrees(np.arccos(dots))
-    return spread.max() < angle_thresh_deg
+    # PCA normals directly beside a junction are mixed by cross-surface neighbours.
+    # A robust percentile keeps those few outliers from turning a planar component
+    # into a spurious cylinder while still detecting sustained curvature.
+    return np.percentile(spread, 90.0) < angle_thresh_deg
 
 
 def fit_cylinder(boundary_xyz, boundary_normals):
@@ -412,6 +525,239 @@ def sample_surface_model(boundary_xyz, boundary_normals, hole_lo, hole_hi, in_pl
     return pts, ns
 
 
+def _robust_component_spacing(points, fallback):
+    """Median inlier nearest-neighbour spacing from observable support only."""
+    if len(points) < 3:
+        return float(fallback)
+    distances, _ = cKDTree(points).query(points, k=2)
+    values = distances[:, 1]
+    lo, hi = np.percentile(values, [10, 90])
+    inliers = values[(values >= lo) & (values <= hi)]
+    return float(np.median(inliers)) if len(inliers) else float(fallback)
+
+
+def _fit_tangent_frame(fit, roi_center):
+    if fit["type"] == "plane":
+        normal = fit["normal"] / (np.linalg.norm(fit["normal"]) + 1e-8)
+        origin = roi_center - ((roi_center - fit["center"]) @ normal) * normal
+    else:
+        axis, center, radius = fit["axis"], fit["center"], fit["radius"]
+        radial = roi_center - center - ((roi_center - center) @ axis) * axis
+        if np.linalg.norm(radial) < 1e-8:
+            radial = np.array([1., 0., 0.])
+            if abs(float(radial @ axis)) > 0.9:
+                radial = np.array([0., 0., 1.])
+            radial -= (radial @ axis) * axis
+        normal = radial / (np.linalg.norm(radial) + 1e-8)
+        origin = center + radius * normal + ((roi_center - center) @ axis) * axis
+    u = np.array([1., 0., 0.])
+    if abs(float(u @ normal)) > 0.9:
+        u = np.array([0., 1., 0.])
+    u -= (u @ normal) * normal; u /= np.linalg.norm(u) + 1e-8
+    v = np.cross(normal, u); v /= np.linalg.norm(v) + 1e-8
+    return origin, u, v, normal
+
+
+def _project_to_fit(seeds, fit):
+    if fit["type"] == "plane":
+        normal = fit["normal"] / (np.linalg.norm(fit["normal"]) + 1e-8)
+        points = seeds - np.outer((seeds - fit["center"]) @ normal, normal)
+        return points, np.tile(normal, (len(points), 1))
+    axis, center, radius = fit["axis"], fit["center"], fit["radius"]
+    axial = np.outer((seeds - center) @ axis, axis)
+    radial = seeds - center - axial
+    normals = radial / (np.linalg.norm(radial, axis=1, keepdims=True) + 1e-8)
+    points = center + axial + radius * normals
+    return points, normals
+
+
+def _poisson_reject(points, normals, min_distance, target_count, rng):
+    """Lightweight deterministic dart rejection; no GT-dependent count decisions."""
+    if len(points) <= target_count:
+        return points, normals
+    order = rng.permutation(len(points))
+    accepted = []
+    for index in order:
+        point = points[index]
+        if not accepted or np.min(np.linalg.norm(points[np.asarray(accepted)] - point, axis=1)) >= min_distance:
+            accepted.append(int(index))
+            if len(accepted) >= target_count:
+                break
+    if len(accepted) < target_count:
+        used = set(accepted)
+        accepted.extend([int(i) for i in order if int(i) not in used][:target_count-len(accepted)])
+    accepted = np.asarray(accepted[:target_count], dtype=np.int64)
+    return points[accepted], normals[accepted]
+
+
+def estimate_method_independent_spawn_budget(boundary_xyz, boundary_normals, scene,
+                                             fallback_spacing):
+    """Estimate one total count before any C0-C3 graph construction/partition.
+
+    The estimate consumes only surviving boundary support, robust spacing, and one
+    graph-independent fitted local surface.  It never sees removed points or labels.
+    """
+    roi_center = np.asarray(getattr(scene, "roi_center", scene.center), dtype=np.float32)
+    roi_radius = float(getattr(scene, "roi_radius",
+                               0.5 * float(np.max(scene.hole_hi - scene.hole_lo))))
+    spacing = _robust_component_spacing(boundary_xyz, fallback_spacing)
+    if surface_model_is_planar(boundary_xyz, boundary_normals):
+        center, normal = fit_surface_plane(boundary_xyz)
+        fit = {"type": "plane", "center": center, "normal": normal}
+    else:
+        fit = fit_cylinder(boundary_xyz, boundary_normals)
+    origin, u, v, _ = _fit_tangent_frame(fit, roi_center)
+    uv = np.stack([(boundary_xyz - origin) @ u, (boundary_xyz - origin) @ v], axis=1)
+    hull_area = 0.0
+    if len(uv) >= 3:
+        try:
+            from scipy.spatial import ConvexHull
+            hull_area = float(ConvexHull(uv).volume)
+        except Exception:
+            pass
+    cell_area = np.sqrt(3.0) * 0.5 * spacing * spacing
+    support_area = max(hull_area, len(boundary_xyz) * cell_area, 1e-10)
+    density = len(boundary_xyz) / support_area
+    missing_area = np.pi * roi_radius * roi_radius
+    raw_budget = density * missing_area
+    budget = max(1, int(round(raw_budget)))
+    max_by_spacing = max(1, int(missing_area /
+        (np.sqrt(3.) * .5 * (0.75 * spacing) ** 2)))
+    budget = min(budget, max_by_spacing, max(4, 4 * len(boundary_xyz)))
+    return budget, {"reliable_boundary_gaussians": int(len(boundary_xyz)),
+                    "robust_spacing": spacing,
+                    "observable_support_area": support_area,
+                    "boundary_density": density,
+                    "estimated_missing_surface_area": missing_area,
+                    "raw_budget": raw_budget, "N_budget": int(budget)}
+
+
+def _exact_component_budgets(weights, total):
+    """Largest-remainder integer allocation with an exact method-independent sum."""
+    weights = np.asarray(weights, dtype=np.float64)
+    weights = np.maximum(weights, 0.0)
+    if weights.sum() <= 0:
+        weights[:] = 1.0
+    quotas = total * weights / weights.sum()
+    allocation = np.floor(quotas).astype(np.int64)
+    remainder = int(total - allocation.sum())
+    if remainder:
+        order = np.argsort(-(quotas - allocation), kind="stable")
+        allocation[order[:remainder]] += 1
+    return allocation
+
+
+def density_aware_surface_spawn(boundary_xyz, boundary_normals, comp_labels, comp_fits,
+                                scene, fallback_spacing, rng, total_budget=None):
+    """Spawn from observable component density x fitted missing surface area.
+
+    Counts use surviving support only.  The configured ROI defines where geometry is
+    missing; removed Gaussian positions/counts are never consumed.  A robust component
+    budget prevents fragmented/tiny components from duplicating the full hole area.
+    """
+    roi_center = np.asarray(getattr(scene, "roi_center", scene.center), dtype=np.float32)
+    roi_radius = getattr(scene, "roi_radius", None)
+    if roi_radius is None:
+        roi_radius = 0.5 * float(np.max(scene.hole_hi - scene.hole_lo))
+    roi_radius = float(roi_radius)
+    component_sizes = np.bincount(comp_labels, minlength=len(comp_fits)).astype(np.float64)
+    total_support = max(float(component_sizes.sum()), 1.0)
+    points_all, normals_all, labels_all, diagnostics = [], [], [], []
+
+    # Count-matched allocation weights use only per-component reliable support and its
+    # observable tangent footprint.  The total was already frozen before partition.
+    fixed_allocations = None
+    if total_budget is not None:
+        allocation_weights = []
+        for component, fit in enumerate(comp_fits):
+            members = np.where(comp_labels == component)[0]
+            if len(members) == 0:
+                allocation_weights.append(0.0); continue
+            support = boundary_xyz[members]
+            local_spacing = _robust_component_spacing(support, fallback_spacing)
+            origin, u, v, _ = _fit_tangent_frame(fit, roi_center)
+            uv = np.stack([(support-origin)@u, (support-origin)@v], axis=1)
+            area = 0.0
+            if len(uv) >= 3:
+                try:
+                    from scipy.spatial import ConvexHull
+                    area = float(ConvexHull(uv).volume)
+                except Exception:
+                    pass
+            area = max(area, len(members) * np.sqrt(3.) * .5 * local_spacing**2, 1e-10)
+            component_density = len(members) / area
+            component_area_share = np.pi * roi_radius**2 * len(members) / total_support
+            allocation_weights.append(component_density * component_area_share)
+        fixed_allocations = _exact_component_budgets(allocation_weights, int(total_budget))
+
+    for component, fit in enumerate(comp_fits):
+        members = np.where(comp_labels == component)[0]
+        if len(members) == 0:
+            continue
+        support = boundary_xyz[members]
+        spacing = _robust_component_spacing(support, fallback_spacing)
+        origin, u, v, _ = _fit_tangent_frame(fit, roi_center)
+        uv = np.stack([(support - origin) @ u, (support - origin) @ v], axis=1)
+        # Observable support area: robust tangent footprint, lower-bounded by one
+        # hexagonal cell per reliable support Gaussian to suppress spacing outliers.
+        support_area_hull = 0.0
+        if len(uv) >= 3:
+            try:
+                from scipy.spatial import ConvexHull
+                support_area_hull = float(ConvexHull(uv).volume)
+            except Exception:
+                support_area_hull = 0.0
+        cell_area = np.sqrt(3.0) * 0.5 * spacing * spacing
+        support_area = max(support_area_hull, len(members) * cell_area, 1e-10)
+        density = len(members) / support_area
+
+        # Fitted local-surface disk.  Component allocation follows observable support
+        # share so graph fragmentation cannot multiply the full missing area.
+        missing_area_total = np.pi * roi_radius * roi_radius
+        support_fraction = float(len(members) / total_support)
+        missing_area = missing_area_total * support_fraction
+        raw_count = density * missing_area
+        # Robust caps: at least one, no tiny component gets >4x its support, and target
+        # spacing cannot become denser than 0.75x the observed robust spacing.
+        if fixed_allocations is None:
+            target_count = max(1, int(round(raw_count)))
+            target_count = min(target_count, max(4, 4 * len(members)))
+            max_by_spacing = max(1, int(missing_area / (np.sqrt(3.) * .5 * (0.75 * spacing) ** 2)))
+            target_count = min(target_count, max_by_spacing)
+        else:
+            target_count = int(fixed_allocations[component])
+            if target_count == 0:
+                diagnostics.append({"component": int(component), "support_gaussians": int(len(members)),
+                                    "robust_spacing": spacing, "observable_support_area": support_area,
+                                    "boundary_density": density, "estimated_missing_surface_area": missing_area,
+                                    "raw_predicted_count": raw_count, "spawned_count": 0,
+                                    "resulting_newborn_density": 0.0,
+                                    "density_ratio_newborn_boundary": 0.0})
+                continue
+
+        candidates_n = max(target_count * 12, 128)
+        theta = rng.uniform(0.0, 2.0 * np.pi, candidates_n)
+        radial = roi_radius * np.sqrt(rng.uniform(0.0, 1.0, candidates_n))
+        seeds = origin + np.outer(radial * np.cos(theta), u) + np.outer(radial * np.sin(theta), v)
+        candidates, candidate_normals = _project_to_fit(seeds, fit)
+        points, normals = _poisson_reject(candidates, candidate_normals,
+                                          min_distance=0.75 * spacing,
+                                          target_count=target_count, rng=rng)
+        points_all.append(points); normals_all.append(normals)
+        labels_all.append(np.full(len(points), component, dtype=np.int64))
+        diagnostics.append({"component": int(component), "support_gaussians": int(len(members)),
+                            "robust_spacing": spacing, "observable_support_area": support_area,
+                            "boundary_density": density, "estimated_missing_surface_area": missing_area,
+                            "raw_predicted_count": raw_count, "spawned_count": int(len(points)),
+                            "resulting_newborn_density": len(points) / max(missing_area, 1e-10),
+                            "density_ratio_newborn_boundary": (len(points) / max(missing_area, 1e-10)) / density})
+    if not points_all:
+        raise RuntimeError("density-aware spawning found no supported components")
+    return (np.concatenate(points_all).astype(np.float32),
+            np.concatenate(normals_all).astype(np.float32),
+            np.concatenate(labels_all), diagnostics)
+
+
 # ---------------------------------------------------------------------------
 # Step 9: attribute propagation
 # ---------------------------------------------------------------------------
@@ -473,7 +819,9 @@ def propagate_from_boundary(new_xyz, boundary_xyz, boundary_attrs, comp_of_bound
 
 def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
                    sh_degree=3, spacing_override=None, semantic_noise=0.0,
-                   normal_noise=0.0):
+                   normal_noise=0.0, normal_affinity="hard",
+                   hole_mask_override=None, semantic_gate="hard",
+                   spawn_rule="density_aware"):
     """Run completion for a SyntheticScene.  `model` is the ORIGINAL (pre-carving) model.
 
     `baseline` selects the graph variant:
@@ -494,7 +842,13 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
     xyz = model._xyz.detach().cpu().numpy()
     hole_lo, hole_hi = scene.hole_lo, scene.hole_hi
 
-    kept_mask, hole_mask = carve_hole(xyz, hole_lo, hole_hi)
+    if hole_mask_override is None:
+        kept_mask, hole_mask = carve_hole(xyz, hole_lo, hole_hi)
+    else:
+        hole_mask = np.asarray(hole_mask_override, dtype=bool)
+        if hole_mask.shape != (len(xyz),):
+            raise ValueError("hole_mask_override must have shape ({},)".format(len(xyz)))
+        kept_mask = ~hole_mask
     hole_xyz = xyz[hole_mask]
     kept_xyz = xyz[kept_mask]
     kept_idx = np.where(kept_mask)[0]
@@ -502,16 +856,17 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
         raise RuntimeError("hole too small; adjust scene hole bounds")
 
     # Step 4: boundary detection (kept-space indices).
-    boundary_kept, spacing = detect_boundary(hole_xyz, kept_xyz)
+    boundary_kept, spacing = detect_boundary_from_region(kept_xyz, hole_lo, hole_hi)
     spacing = spacing if spacing_override is None else spacing_override
     if len(boundary_kept) < 8:
         raise RuntimeError("too few boundary Gaussians; adjust hole")
     boundary_idx = kept_idx[boundary_kept]      # original indices
     boundary_xyz = xyz[boundary_idx]
 
-    # Step 5: PCA normals over the KEPT set, index boundary ones.
-    normals_kept = estimate_normals_local_pca(kept_xyz, k=boundary_k)
-    boundary_normals = normals_kept[boundary_kept]
+    # Step 5: PCA normals only where they are consumed (the boundary).  This is
+    # equivalent to indexing the full estimate but scales to real checkpoints.
+    boundary_normals, normal_diag = estimate_normals_local_pca_at(
+        kept_xyz, boundary_kept, k=boundary_k, return_diagnostics=True)
     appearance = _appearance_features(model)
     semantic = _semantic_features(model)
 
@@ -519,13 +874,30 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
     _, in_plane = hole_footprint(hole_lo, hole_hi)
 
     result = CompletionResult()
-    result.hole_xyz = hole_xyz
+    # Deliberately do not retain held-out positions in the completion result.  They are
+    # reconstructed by evaluation code from kept_mask after completion has finished.
+    result.hole_xyz = None
     result.kept_mask = kept_mask
     result.boundary_idx = boundary_idx
     result.normals = boundary_normals
     result.boundary_spacing = spacing
     result.surface_label = None
     result.components = None
+    result.normal_affinity = normal_affinity
+    result.spawn_rule = spawn_rule
+    result.pca_eigenvalues = normal_diag["eigenvalues"]
+    result.normal_confidence = normal_diag["normal_confidence"]
+    result.neighbor_count = normal_diag["neighbor_count"]
+    result.local_curvature = normal_diag["curvature"]
+
+    # Count-matched total is frozen here, before variant flags, graph edges, semantic
+    # gates, or graph partition are applied.
+    fixed_spawn_budget = None
+    if spawn_rule == "count_matched":
+        fixed_spawn_budget, budget_diag = estimate_method_independent_spawn_budget(
+            boundary_xyz, boundary_normals, scene, spacing)
+        result.spawn_budget = fixed_spawn_budget
+        result.spawn_budget_diagnostics = budget_diag
 
     # ---------------- Baseline A: flat grid + nearest-neighbour clone ----------------
     if baseline == "A":
@@ -568,7 +940,8 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
     part_rows, part_cols, _, _ = build_knn_graph(
         boundary_xyz, bn, None, bs, k=knn_k,
         use_normal=use_normal, use_appearance=False, use_semantic=use_semantic,
-        gate_normal=0.8 if use_normal else None)
+        gate_normal=0.8 if use_normal else None, normal_affinity=normal_affinity,
+        semantic_gate=semantic_gate)
     comp_labels = partition_boundary_graph(len(boundary_xyz), part_rows, part_cols)
     n_comp = int(comp_labels.max()) + 1
 
@@ -579,7 +952,8 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
         rows, cols, weights, _ = build_knn_graph(
             boundary_xyz, bn, boundary_appearance, bs, k=knn_k,
             use_normal=use_normal, use_appearance=True, use_semantic=use_semantic,
-            gate_normal=0.8 if use_normal else None)
+            gate_normal=0.8 if use_normal else None, normal_affinity=normal_affinity,
+            semantic_gate=semantic_gate)
     else:
         rows, cols, weights, _ = part_rows, part_cols, None, None
 
@@ -598,45 +972,41 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
         else:
             comp_fits.append(fit_cylinder(bxm, bnm))
 
-    # seed base grid over the hole (axis-aligned in-plane grid), assign each seed to
-    # nearest component, project onto that component's surface.
+    # Spawn directly on fitted surfaces.  The legacy AABB grid remains callable only
+    # for controlled old-vs-new diagnostics.
     hole_center = 0.5 * (hole_lo + hole_hi)
     hu = (hole_hi[in_plane[0]] - hole_lo[in_plane[0]]) / 2.0
     hv = (hole_hi[in_plane[1]] - hole_lo[in_plane[1]]) / 2.0
-    base = []
-    for a in np.arange(-hu, hu + spacing / 2, spacing):
-        for b in np.arange(-hv, hv + spacing / 2, spacing):
-            p = hole_center.copy()
-            p[in_plane[0]] += a
-            p[in_plane[1]] += b
-            base.append(p)
-    base = np.asarray(base, dtype=np.float32) if len(base) else boundary_xyz[:1].copy()
+    if spawn_rule in ("density_aware", "count_matched"):
+        fitted_xyz, fitted_normals, comp, spawn_diag = density_aware_surface_spawn(
+            boundary_xyz, bn, comp_labels, comp_fits, scene, spacing, rng,
+            total_budget=fixed_spawn_budget)
+        pts = list(fitted_xyz); ns = list(fitted_normals)
+        result.spawn_diagnostics = spawn_diag
+        base = None
+    elif spawn_rule == "legacy":
+        base = []
+        for a in np.arange(-hu, hu + spacing / 2, spacing):
+            for b in np.arange(-hv, hv + spacing / 2, spacing):
+                p = hole_center.copy(); p[in_plane[0]] += a; p[in_plane[1]] += b
+                base.append(p)
+        base = np.asarray(base, dtype=np.float32) if len(base) else boundary_xyz[:1].copy()
+    else:
+        raise ValueError("spawn_rule must be density_aware, count_matched, or legacy")
     u = np.array([1.0, 0.0, 0.0])
     v = np.array([0.0, 0.0, 1.0])
-    tree = cKDTree(boundary_xyz)
-    _, bi = tree.query(base, k=1)
-    comp = comp_labels[bi]
-
-    pts, ns = [], []
-    for p in range(len(base)):
-        fit = comp_fits[comp[p]]
-        if fit["type"] == "plane":
-            proj = base[p] - ((base[p] - fit["center"]) @ fit["normal"]) * fit["normal"]
-            pts.append(proj); ns.append(fit["normal"])
-        else:
-            axis, c, r = fit["axis"], fit["center"], fit["radius"]
-            pu = u if abs(float(np.dot(u, axis))) < 0.9 else (v if abs(float(np.dot(v, axis))) < 0.9 else np.array([0., 0., 1.]))
-            pv = np.cross(axis, pu)
-            pu = pu / (np.linalg.norm(pu) + 1e-8); pv = pv / (np.linalg.norm(pv) + 1e-8)
-            radial = base[p] - c - (base[p] - c) @ axis * axis
-            th = float(np.arctan2(radial @ pv, radial @ pu))
-            s = float(base[p] @ axis)
-            pos = c + r * (np.cos(th) * pu + np.sin(th) * pv) + s * axis
-            nor = np.cos(th) * pu + np.sin(th) * pv
-            pts.append(pos); ns.append(nor)
-    new_xyz = np.asarray(pts, dtype=np.float32) + \
+    if spawn_rule == "legacy":
+        tree = cKDTree(boundary_xyz); _, bi = tree.query(base, k=1); comp = comp_labels[bi]
+        pts, ns = [], []
+        for p in range(len(base)):
+            fit = comp_fits[comp[p]]
+            projected, projected_normals = _project_to_fit(base[p:p+1], fit)
+            pts.append(projected[0]); ns.append(projected_normals[0])
+    fitted_xyz = np.asarray(pts, dtype=np.float32)
+    fitted_normals = np.asarray(ns, dtype=np.float32)
+    new_xyz = fitted_xyz + \
         rng.normal(0, spacing * 0.05, size=(len(pts), 3)).astype(np.float32)
-    new_normals = np.asarray(ns, dtype=np.float32)
+    new_normals = fitted_normals.copy()
 
     # structure-aware propagation: each new gaussian draws only from its component's
     # boundary Gaussians, refined by the variant's graph connectivity (appearance-aware
@@ -649,7 +1019,7 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
     else:                       # C1: position+normal connectivity from partition graph
         conn = boundary_connectivity(len(boundary_xyz), part_rows, part_cols,
                                      np.ones(part_rows.shape[0], dtype=np.float32))
-    new_attrs, _ = propagate_from_boundary(new_xyz, boundary_xyz, boundary_attrs,
+    new_attrs, propagation_weights = propagate_from_boundary(new_xyz, boundary_xyz, boundary_attrs,
                                            comp_labels, comp, mode="graph_comp",
                                            spacing=spacing, conn=conn)
     result.new_xyz = new_xyz
@@ -658,6 +1028,24 @@ def run_completion(model, scene, baseline="C3", seed=0, boundary_k=16, knn_k=12,
     result.surface_label = comp
     result.components = [np.where(comp_labels == c)[0] for c in range(n_comp)]
     result.n_components = n_comp
+    result.graph_rows = part_rows
+    result.graph_cols = part_cols
+    result.component_labels = comp_labels
+    result.fitted_xyz = fitted_xyz
+    result.fitted_normals = fitted_normals
+    # Observable-only completion confidence: local geometry quality, normalized
+    # propagation support, and semantic consistency.  GT is never consulted.
+    _, nearest_boundary = cKDTree(boundary_xyz).query(new_xyz, k=1)
+    geometry_conf = np.clip(result.normal_confidence[nearest_boundary], 0.0, 1.0)
+    support_conf = np.clip(np.max(propagation_weights, axis=1) *
+                           np.count_nonzero(propagation_weights, axis=1), 0.0, 1.0)
+    semantic_conf = np.ones(len(new_xyz), dtype=np.float32)
+    if use_semantic and boundary_semantic is not None and boundary_semantic.shape[1] > 0:
+        sem = np.abs(boundary_semantic[nearest_boundary])
+        semantic_conf = np.max(sem, axis=1) / (np.sum(sem, axis=1) + 1e-8)
+    result.confidence_terms = {"geometry": geometry_conf, "support": support_conf,
+                               "semantic": semantic_conf}
+    result.completion_confidence = geometry_conf * support_conf * semantic_conf
     return result
 
 

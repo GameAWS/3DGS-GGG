@@ -1,0 +1,16 @@
+{
+  "checkpoint": "path/to/model/point_cloud/iteration_30000/point_cloud.ply",
+  "sh_degree": 3,
+  "regions": [
+    {"name": "wall_floor_01", "category": "wall-floor junction",
+     "selector": {"type": "aabb", "min": [-0.2, -0.1, -0.1], "max": [0.2, 0.1, 0.2]},
+     "camera": {"count": 3, "radius": 1.2, "elevation_deg": 30, "surface_axis": 2}},
+    {"name": "parallel_01", "category": "nearby parallel surfaces",
+     "selector": {"type": "oriented_box", "center": [0, 0, 0],
+       "axes": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "half_extent": [0.2, 0.2, 0.05]}},
+    {"name": "textured_plane_01", "category": "planar textured region",
+     "selector": {"type": "normalized_aabb", "min": [0.45, 0.45, 0.45], "max": [0.55, 0.55, 0.55]}},
+    {"name": "curve_01", "category": "curved surface",
+     "selector": {"type": "sphere", "center": [0, 0, 0], "radius": 0.15}}
+  ]
+}

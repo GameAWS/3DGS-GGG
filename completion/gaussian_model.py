@@ -144,9 +144,17 @@ class GaussianModel:
 
         obj_names = sorted((p.name for p in plydata.elements[0].properties
                             if p.name.startswith("obj_dc_")), key=lambda x: int(x.split("_")[-1]))
-        self.num_objects = len(obj_names)
-        objects_dc = np.stack([np.asarray(plydata.elements[0][n], dtype=np.float32)
-                               for n in obj_names], axis=1)  # (N, num_obj)
+        # Non-Grouping 3DGS PLYs may omit identity features.  Keep one constant zero
+        # channel so downstream tensor shapes remain valid; scene inspection detects
+        # its zero variance and reports semantic_identity.exists=false.  C3 then
+        # degrades gracefully to the same topology as no semantic signal.
+        if obj_names:
+            self.num_objects = len(obj_names)
+            objects_dc = np.stack([np.asarray(plydata.elements[0][n], dtype=np.float32)
+                                   for n in obj_names], axis=1)  # (N, num_obj)
+        else:
+            self.num_objects = 1
+            objects_dc = np.zeros((xyz.shape[0], 1), dtype=np.float32)
 
         self._xyz = nn.Parameter(torch.tensor(xyz))
         self._features_dc = nn.Parameter(torch.tensor(features_dc.reshape(xyz.shape[0], 1, 3)))

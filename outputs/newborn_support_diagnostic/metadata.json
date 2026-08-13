@@ -13,5 +13,6 @@
     "same_pipeline_across_policies": true
   },
   "checkpoint_file_size_bytes": 395031986,
-  "checkpoint_sha256": "d2fee173a0ec2e98e72fa45483f816ccbec86ab66825d00dc8213220a2a5866a"
+  "checkpoint_sha256": "d2fee173a0ec2e98e72fa45483f816ccbec86ab66825d00dc8213220a2a5866a",
+  "number_of_gaussians": 1266122
 }

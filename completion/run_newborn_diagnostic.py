@@ -420,6 +420,8 @@ def main():
     model.load_ply(args.checkpoint)
     xyz = model.get_xyz.detach().cpu().numpy()
     meta["number_of_gaussians"] = int(len(xyz))
+    with open(os.path.join(args.out, "metadata.json"), "w") as f:
+        json.dump(meta, f, indent=2, default=str)
 
     descs, rows = [], []
     total = 25 * 3 * 4

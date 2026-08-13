@@ -1,7 +1,7 @@
 {
   "experiment": "global normal-affinity policy",
-  "commit_hash": "87cfae2d56765e553e40b1cc110f85e8c2bc50ab",
-  "checkpoint_path": "E:\\3DGS-GGG\\checkpoints\\ramen\\point_cloud\\iteration_30000\\point_cloud.ply",
+  "commit_hash": "b03ceeda0d1e9c84d54bd0d2605ee463602ad39f",
+  "checkpoint_path": "checkpoints_download/ramen/point_cloud/iteration_30000/point_cloud.ply",
   "random_seed": 0,
   "single_scene_multi_roi_validation": true,
   "method_config": {
@@ -12,7 +12,7 @@
     "knn_k": 12,
     "same_pipeline_across_policies": true
   },
-  "checkpoint_file_size_bytes": null,
-  "checkpoint_sha256": null,
-  "checkpoint_missing": true
+  "checkpoint_file_size_bytes": 395031986,
+  "checkpoint_sha256": "d2fee173a0ec2e98e72fa45483f816ccbec86ab66825d00dc8213220a2a5866a",
+  "number_of_gaussians": 1266122
 }

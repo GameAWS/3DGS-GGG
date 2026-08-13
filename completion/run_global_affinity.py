@@ -215,7 +215,7 @@ def benefit_summary(all_rows):
                 rels.append(rel)
                 gtp.append(float(c0["gt_to_pred"]) - float(mx["gt_to_pred"]))
                 ptg.append(float(mx["pred_to_gt"]) - float(c0["pred_to_gt"]))
-                f2.append(float(mx["fscore_2x"]) - float(c0["fscore_2x"]))
+                f2.append(float(mx["fscore_2.0x"]) - float(c0["fscore_2.0x"]))
                 seam.append(float(mx["seam_error"]) - float(c0["seam_error"]))
                 if rel >= 0.05: helps += 1
                 elif rel <= -0.05: hurts += 1
@@ -446,8 +446,19 @@ def predictability(selection_rows, features, method="C3"):
         return np.asarray(preds)
 
     out = []
+    # Reference: global majority-class baseline (predict modal class everywhere).
+    modal = _majority_baseline(y)
+    majority_acc = float(np.mean(y == modal))
+    out.append({
+        "target": "best_affinity({})".format(method),
+        "classifier": "majority_baseline_global", "n": n,
+        "accuracy": majority_acc,
+        "balanced_accuracy": _balanced_accuracy(y, np.full(n, modal), classes),
+        "macro_f1": _macro_f1(y, np.full(n, modal), classes),
+        "confusion_hard_soft_adaptive": _confusion(y, np.full(n, modal), classes),
+    })
     for name, fit in [
-        ("majority_baseline", lambda Xtr, ytr, xt: _majority_baseline(ytr)),
+        ("majority_baseline_loo", lambda Xtr, ytr, xt: _majority_baseline(ytr)),
         ("decision_stump", _decision_stump),
         ("decision_tree_depth2", lambda Xtr, ytr, xt: _decision_tree(Xtr, ytr, xt, 2)),
     ]:
@@ -513,7 +524,7 @@ def make_plots(out_dir, all_rows, oracle_rows, summary_rows):
                 rels.append((float(c1["symmetric_chamfer"]) /
                              max(float(c0["symmetric_chamfer"]), 1e-12) - 1) * 100)
         data.append(rels)
-    ax.boxplot(data, labels=AFFINITIES)
+    ax.boxplot(data, tick_labels=AFFINITIES)
     ax.set_ylabel("C1 relative Chamfer change vs C0 (%)")
     ax.set_title("Global affinity policy — C1 vs C0")
     fig.tight_layout(); fig.savefig(os.path.join(pdir, "global_policy_chamfer.png"), dpi=150)
@@ -574,6 +585,26 @@ def make_plots(out_dir, all_rows, oracle_rows, summary_rows):
         fig.savefig(os.path.join(pdir, "oracle_vs_best_global.png"), dpi=150)
         plt.close(fig)
 
+        # oracle best-affinity distribution by method
+        from collections import Counter
+        fig, ax = plt.subplots(figsize=(8, 5))
+        width = 0.25
+        methods = ["C0", "C1", "C2", "C3"]
+        affinities = AFFINITIES
+        x = np.arange(len(methods))
+        for i, aff in enumerate(affinities):
+            counts = [sum(1 for r in oracle_rows
+                          if r["method"] == m and r["oracle_best_affinity"] == aff)
+                      for m in methods]
+            ax.bar(x + (i - 1) * width, counts, width, label=aff)
+        ax.set_xticks(x, methods)
+        ax.set_ylabel("ROIs where affinity is oracle-best")
+        ax.set_title("Oracle best-affinity distribution by method (n=25 ROIs)")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(pdir, "oracle_best_affinity_distribution.png"), dpi=150)
+        plt.close(fig)
+
 
 # ---------------------------------------------------------------------------
 # main
@@ -586,6 +617,8 @@ def main():
     ap.add_argument("--rois-csv", default=DEFAULT_ROIS_CSV)
     ap.add_argument("--out", default="outputs/global_affinity_ramen")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--skip-compute", action="store_true",
+                    help="reuse existing all_results.csv and only rebuild summaries/plots")
     args = ap.parse_args()
 
     if not os.path.isfile(args.checkpoint):
@@ -608,29 +641,40 @@ def main():
         json.dump(meta, f, indent=2)
 
     rois = load_25_rois(args.rois_csv)
-    model = GaussianModel(3)
-    model.load_ply(args.checkpoint)
-    xyz = model.get_xyz.detach().cpu().numpy()
-    meta["number_of_gaussians"] = int(len(xyz))
-    with open(os.path.join(args.out, "metadata.json"), "w") as f:
-        json.dump(meta, f, indent=2)
-
     all_rows = []
-    total = 25 * 3 * 4
-    for policy, affinity in GLOBAL_POLICIES.items():
-        for roi in rois:
-            for method in VARIANTS:
-                row = run_cell(model, xyz, roi, affinity, method, args.seed)
-                if row is not None:
-                    row["policy_name"] = policy
-                    all_rows.append(row)
-                n = len(all_rows)
-                if n % 25 == 0:
-                    print("[global-affinity] {}/{}".format(n, total), flush=True)
+    if args.skip_compute and os.path.isfile(os.path.join(args.out, "all_results.csv")):
+        all_rows = read_csv(os.path.join(args.out, "all_results.csv"))
+        # count Gaussians for metadata even when reusing results
+        _m = GaussianModel(3)
+        _m.load_ply(args.checkpoint)
+        meta["number_of_gaussians"] = int(_m.get_xyz.shape[0])
+        with open(os.path.join(args.out, "metadata.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+        print("[global-affinity] reusing {} existing result rows".format(len(all_rows)),
+              flush=True)
+    else:
+        model = GaussianModel(3)
+        model.load_ply(args.checkpoint)
+        xyz = model.get_xyz.detach().cpu().numpy()
+        meta["number_of_gaussians"] = int(len(xyz))
+        with open(os.path.join(args.out, "metadata.json"), "w") as f:
+            json.dump(meta, f, indent=2)
 
-    with open(os.path.join(args.out, "all_results.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(all_rows[0].keys()))
-        w.writeheader(); w.writerows(all_rows)
+        total = 25 * 3 * 4
+        for policy, affinity in GLOBAL_POLICIES.items():
+            for roi in rois:
+                for method in VARIANTS:
+                    row = run_cell(model, xyz, roi, affinity, method, args.seed)
+                    if row is not None:
+                        row["policy_name"] = policy
+                        all_rows.append(row)
+                    n = len(all_rows)
+                    if n % 25 == 0:
+                        print("[global-affinity] {}/{}".format(n, total), flush=True)
+
+        with open(os.path.join(args.out, "all_results.csv"), "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(all_rows[0].keys()))
+            w.writeheader(); w.writerows(all_rows)
 
     summary_rows = benefit_summary(all_rows)
     write_csv(os.path.join(args.out, "global_policy_summary.csv"), summary_rows)
@@ -683,8 +727,9 @@ def main():
         if not sel:
             continue
         oc = [float(r["oracle_chamfer"]) for r in sel]
+        per_method_winners = Counter(r["oracle_best_affinity"] for r in sel)
         lines.append("- {}: oracle mean Chamfer {:.5f}; affinity wins: {}".format(
-            method, np.mean(oc), dict(winners)))
+            method, np.mean(oc), dict(per_method_winners)))
     lines += ["",
               "The oracle chooses the best affinity per ROI and is analysis-only; "
               "it must not be presented as the method.",
@@ -695,20 +740,53 @@ def main():
         lines.append("- {} {}: GT->Pred={} Pred->GT={} seam={}".format(
             r["policy"], r["method"], r["mean_gt_to_pred"], r["mean_pred_to_gt"],
             r["mean_seam"]))
-    lines += ["", "## 6. Interpretation",
+    lines += ["", "## 6. Interpretation and answers",
               "",
-              "1. Which globally fixed affinity is best? — see global_policy_summary.csv "
-              "(computed from runs).",
-              "2. C1 vs C0 and C3 vs C0: see paired_statistics.csv (Wilcoxon + bootstrap).",
-              "3. Coverage-precision tradeoff: see section 5.",
-              "4. Oracle-vs-global gap: see oracle_upper_bound.csv.",
-              "5. Affinity predictability: see affinity_selection_dataset.csv + "
-              "affinity_prediction_cv output (LOO).",
+              "**SINGLE-SCENE MULTI-ROI VALIDATION** — one trained GG scene (ramen); "
+              "these are not multi-scene generalization claims.",
+              "",
+              "1. **Which globally fixed affinity is best?** For C3 (Chamfer): soft is best "
+              "as a single fixed policy reaching 0.0323 mean (vs hard 0.0332, adaptive 0.0330); "
+              "for C1 hard is best (0.0335 vs soft 0.0351 / adaptive 0.0356). No single "
+              "policy dominates both.",
+              "2. **Does C1 beat C0 consistently?** No. Under hard affinity C1 helps in "
+              "12/25 but hurts in 7/25 and the paired difference is not significant "
+              "(Wilcoxon p=0.21); under soft/adaptive C1 is ~identical to C0. See "
+              "paired_statistics.csv.",
+              "3. **Does C3 beat C0 consistently?** No — it is mixed. Hard C3 helps 13/25 "
+              "and hurts 11/25 (p=0.56); soft and adaptive C3 help 14/13 and hurt 6/6. "
+              "No policy gives a significant paired Chamfer gain.",
+              "4. **Coverage-precision tradeoff?** Yes, it persists. Under all three "
+              "policies C3 lowers GT->Pred (better recall/coverage) at the cost of higher "
+              "Pred->GT (worse precision) and a substantially larger boundary seam error "
+              "(0.50 -> 0.79-0.90).",
+              "5. **Oracle-vs-global gap?** For C3 the per-ROI oracle (best affinity) reaches "
+              "0.0307 mean Chamfer vs 0.0323 for the best fixed policy (soft) — a ~4-5% "
+              "relative improvement. For C1 oracle 0.0308 vs best-global 0.0334 (hard) — "
+              "~7% gain. Moderate but real.",
+              "6. **Which affinity wins most often under the oracle?** hard dominates for "
+              "C1/C2 (18/25), while for C3 it is split (hard 11, soft 12, adaptive 2). "
+              "soft is never the best global policy for C1 but is for C3.",
+              "7. **Can pre-completion descriptors predict the oracle affinity better than "
+              "majority?** No. With 3 affinity classes (hard 11 / soft 12 / adaptive 2) and "
+              "n=25, the global majority baseline reaches 0.48 accuracy; LOO decision stump "
+              "0.36, depth-2 tree 0.28 — none beat the majority. See "
+              "affinity_prediction_cv.csv. (Exploratory, low n; the near-tie between hard "
+              "and soft makes learning the residual hard.)",
+              "8. **Does the evidence justify an automatic affinity selector?** Not yet. "
+              "The best-affinity choice is ROI- and method-dependent, no fixed policy is "
+              "consistently best, and descriptor-based prediction does not strongly beat "
+              "majority at n=25. A selector would need further evidence.",
               "",
               "No new adaptive selector was implemented.  No method was modified."]
     with open(os.path.join(args.out, "validation_report.md"), "w") as f:
         f.write("\n".join(lines) + "\n")
     print("[global-affinity] done -> {}".format(args.out))
+
+
+def read_csv(path):
+    with open(path) as f:
+        return list(csv.DictReader(f))
 
 
 def write_csv(path, rows):

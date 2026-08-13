@@ -1,0 +1,5 @@
+target,classifier,n,accuracy,balanced_accuracy,macro_f1,confusion_hard_soft_adaptive
+best_affinity(C3),majority_baseline_global,25,0.48,0.3333333333333333,0.21621621621605844,"[[0, 11, 0], [0, 12, 0], [0, 2, 0]]"
+best_affinity(C3),majority_baseline_loo,25,0.0,0.0,0.0,"[[0, 11, 0], [12, 0, 0], [0, 2, 0]]"
+best_affinity(C3),decision_stump,25,0.36,0.25757575757575757,0.2428571428567944,"[[3, 8, 0], [6, 6, 0], [0, 2, 0]]"
+best_affinity(C3),decision_tree_depth2,25,0.28,0.20707070707070707,0.19487179487145564,"[[5, 5, 1], [9, 2, 1], [1, 1, 0]]"

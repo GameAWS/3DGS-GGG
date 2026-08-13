@@ -1,0 +1,17 @@
+{
+  "experiment": "global normal-affinity policy",
+  "commit_hash": "ec041430730b9e82c638c79e2ae1efeef737d199",
+  "checkpoint_path": "checkpoints_download/ramen/point_cloud/iteration_30000/point_cloud.ply",
+  "random_seed": 0,
+  "single_scene_multi_roi_validation": true,
+  "method_config": {
+    "spawn_rule": "count_matched",
+    "normal_affinity_policy": "GLOBAL (hard/soft/adaptive), no per-ROI override",
+    "semantic_gate": "hard",
+    "boundary_k": 16,
+    "knn_k": 12,
+    "same_pipeline_across_policies": true
+  },
+  "checkpoint_file_size_bytes": 395031986,
+  "checkpoint_sha256": "d2fee173a0ec2e98e72fa45483f816ccbec86ab66825d00dc8213220a2a5866a"
+}

@@ -1,0 +1,6 @@
+policy,method,roi,delta_chamfer_pruned_minus_orig
+hard,C1,ramen_sample_003,0.011356478545676597
+hard,C1,roi_D_curved_v2,0.011045960404192041
+hard,C3,roi_D_curved_v2,0.011045960404192041
+soft,C3,roi_B_junction,0.010698422565933889
+adaptive,C3,roi_B_junction,0.010698422565933889

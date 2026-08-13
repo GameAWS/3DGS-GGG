@@ -3,3 +3,6 @@ __pycache__/
 output/
 output/*
 work/
+
+# bulky per-newborn raw dump (regenerate: python completion/run_newborn_diagnostic.py)
+outputs/newborn_support_diagnostic/newborn_descriptors.csv

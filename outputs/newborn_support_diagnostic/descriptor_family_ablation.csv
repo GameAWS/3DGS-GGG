@@ -1,0 +1,6 @@
+family,n_descriptors,mean_abs_rocauc_good2x,fdr_significant
+geometry,13,0.544,11
+graph,6,0.61,6
+semantic,4,0.647,4
+appearance,2,0.522,1
+density,3,0.602,3

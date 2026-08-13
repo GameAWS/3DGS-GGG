@@ -1,0 +1,6 @@
+policy,method,roi,delta_chamfer_pruned_minus_orig
+soft,C3,ramen_sample_008,-0.002905336250140139
+adaptive,C3,ramen_sample_005,-0.002874211246300641
+soft,C3,ramen_sample_005,-0.0013183288152994466
+soft,C1,ramen_sample_018,-0.00047340846950028395
+adaptive,C1,ramen_sample_018,-0.00047340846950028395

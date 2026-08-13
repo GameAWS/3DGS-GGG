@@ -314,8 +314,11 @@ def main():
             removed = subset_model(model, mask); predictions = {}; rows_here = []
             for method_index, method in enumerate(METHODS):
                 start = time.time()
+                # Read per-ROI normal_affinity from the roi_validation.json
+                roi_data = json.load(open(os.path.join(args.known_rois, proposal["roi"], "roi_validation.json")))
+                affinity = roi_data.get("normal_affinity", "hard")
                 result = geometry.run_completion(model, scene, baseline=method, seed=0,
-                                                 normal_affinity="hard", semantic_gate="hard",
+                                                 normal_affinity=affinity, semantic_gate="hard",
                                                  hole_mask_override=mask, spawn_rule="count_matched")
                 values = evaluate(model, removed, result, descriptor["local_median_spacing"], 1000*accepted+method_index)
                 rows_here.append({"scene": scene_name, "roi": proposal["roi"], "known_case": proposal["known_case"],

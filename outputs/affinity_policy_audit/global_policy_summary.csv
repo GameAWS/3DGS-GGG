@@ -1,0 +1,6 @@
+policy,variant,helps,neutral,hurts,rois_with_base
+hard,C1,1,0,1,2
+hard,C3,1,0,1,2
+soft,C1,0,1,0,1
+soft,C3,1,0,0,1
+oracle,best-of-3,,,,12 ROIs

@@ -1,0 +1,13 @@
+roi,variant,best_affinity,best_symmetric_chamfer,n_affinities_available,affinities_available
+roi_B_junction,C0,hard,0.061933540538978066,1,hard
+roi_B_junction,C1,hard,0.042514346165251765,1,hard
+roi_B_junction,C2,hard,0.042514346165251765,1,hard
+roi_B_junction,C3,hard,0.038993112920661585,1,hard
+roi_C_layered,C0,soft,0.014068835965681972,1,soft
+roi_C_layered,C1,soft,0.014068835965681972,1,soft
+roi_C_layered,C2,soft,0.014068835965681972,1,soft
+roi_C_layered,C3,soft,0.012908508874689712,1,soft
+roi_D_curved_v2,C0,hard,0.03019518963959182,1,hard
+roi_D_curved_v2,C1,hard,0.037526471834205176,1,hard
+roi_D_curved_v2,C2,hard,0.037526471834205176,1,hard
+roi_D_curved_v2,C3,hard,0.037526471834205176,1,hard

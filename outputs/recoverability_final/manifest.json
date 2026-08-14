@@ -1,0 +1,60 @@
+{
+  "thresholds": {
+    "support_cameras": 5,
+    "support_boundary": 60,
+    "ambig_depth_modes": 3,
+    "ambig_normal_clusters": 4,
+    "ambig_semantic_ids": 3
+  },
+  "scene_metadata": [
+    {
+      "scene": "ramen",
+      "git_commit": "5ed998a83c67fe597f940bf51da2433ede3f04b5",
+      "checkpoint": "checkpoints_download/ramen/point_cloud/iteration_30000/point_cloud.ply",
+      "data_root": "checkpoints_download/data_extracted/ramen",
+      "image_data_source": "HF mqye/Gaussian-Grouping data/lerf_mask/ramen.zip",
+      "checkpoint_sha256": "d2fee173a0ec2e98e72fa45483f816ccbec86ab66825d00dc8213220a2a5866a",
+      "gaussians": 1266122,
+      "sh_degree": 3,
+      "num_objects": 16,
+      "cameras": 135,
+      "manifest_groups": {
+        "R2": 8,
+        "R4": 8
+      }
+    },
+    {
+      "scene": "figurines",
+      "git_commit": "5ed998a83c67fe597f940bf51da2433ede3f04b5",
+      "checkpoint": "checkpoints_download/assets/figurines/point_cloud/iteration_30000/point_cloud.ply",
+      "data_root": "checkpoints_download/assets/data_extracted/figurines",
+      "image_data_source": "HF mqye/Gaussian-Grouping data/lerf_mask/figurines.zip",
+      "checkpoint_sha256": "b2cf468e485cec62ea1bd577b6089ebdbfffa228829ec70250cdd78f21ff771e",
+      "gaussians": 3598368,
+      "sh_degree": 3,
+      "num_objects": 16,
+      "cameras": 303,
+      "manifest_groups": {
+        "R2": 8,
+        "R3": 1,
+        "R4": 8
+      }
+    },
+    {
+      "scene": "teatime",
+      "git_commit": "5ed998a83c67fe597f940bf51da2433ede3f04b5",
+      "checkpoint": "checkpoints_download/assets/teatime/point_cloud/iteration_30000/point_cloud.ply",
+      "data_root": "checkpoints_download/assets/data_extracted/teatime",
+      "image_data_source": "HF mqye/Gaussian-Grouping data/lerf_mask/teatime.zip",
+      "checkpoint_sha256": "09c2fe384fcd667645bec188ac7e0dee332496d7ea5580d77cb6222ef6ca49e0",
+      "gaussians": 2746452,
+      "sh_degree": 3,
+      "num_objects": 16,
+      "cameras": 180,
+      "manifest_groups": {
+        "R2": 8,
+        "R4": 8
+      }
+    }
+  ]
+}

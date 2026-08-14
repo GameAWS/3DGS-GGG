@@ -69,19 +69,31 @@ def hole_visibility(cameras, hole_xyz, margin_px=10.0):
         np.asarray(frontal, dtype=float) if frontal else np.zeros(0)
 
 
-def boundary_support(xyz, mask, center, radius):
-    """Survivor + boundary info around the hole (no GT)."""
+def boundary_support(xyz, mask, center, radius, scene_tree=None):
+    """Survivor + boundary info around the hole (no GT).
+
+    `scene_tree` is an optional precomputed cKDTree over the FULL scene, used only
+    for the spacing / ball-count quantities (identical values, avoids a rebuild).
+    """
     kept = xyz[~mask]
     kept_idx = np.where(~mask)[0]
     lo, hi = center - radius, center + radius
-    tree = cKDTree(kept)
-    d_keep, _ = tree.query(kept, k=min(2, len(kept)))
-    spacing = float(np.median(d_keep[:, -1]))
+    if kept_tree := scene_tree:
+        # query spacing on the kept points via the full-scene tree
+        full_idx = np.where(~mask)[0]
+        dist, _ = scene_tree.query(xyz[full_idx], k=min(2, len(full_idx)))
+        spacing = float(np.median(dist[:, -1]))
+        n_ball = int(scene_tree.query_ball_point(center, 2.5 * radius,
+                                                 return_length=True))
+    else:
+        tree = cKDTree(kept)
+        d_keep, _ = tree.query(kept, k=min(2, len(kept)))
+        spacing = float(np.median(d_keep[:, -1]))
+        n_ball = int(tree.query_ball_point(center, 2.5 * radius, return_length=True))
     bk, _ = geometry.detect_boundary_from_region(kept, lo, hi)
     boundary_idx = kept_idx[bk]
     boundary_xyz = xyz[boundary_idx]
     d_center, _ = cKDTree(boundary_xyz).query(center[None, :], k=1)
-    n_ball = int(tree.query_ball_point(center, 2.5 * radius, return_length=True))
     return spacing, boundary_idx, boundary_xyz, d_center[0], n_ball
 
 
@@ -126,17 +138,42 @@ def entropy(probs):
     return float(-(probs * np.log(probs)).sum())
 
 
+def pca_normals_at(xyz, tree, query_idx, k=16):
+    """Local-PCA normals at query_idx (identical formula to geometry's
+    estimate_normals_local_pca_at) but using a precomputed scene `tree` where the
+    k-NN query is issued from `xyz[query_idx]`.  Returns (B,3) unit normals."""
+    query_idx = np.asarray(query_idx, dtype=np.int64)
+    _, neighbours = tree.query(xyz[query_idx], k=min(k, len(xyz)))
+    normals = np.zeros((len(query_idx), 3), dtype=np.float64)
+    centroid = xyz.mean(0)
+    for q, oi in enumerate(query_idx):
+        nb = xyz[np.atleast_1d(neighbours[q])]
+        mu = nb.mean(0)
+        cov = (nb - mu).T @ (nb - mu) / max(len(nb) - 1, 1)
+        w, v = np.linalg.eigh(cov)
+        normal = v[:, 0]
+        if normal @ (xyz[oi] - centroid) < 0:
+            normal = -normal
+        normals[q] = normal / (np.linalg.norm(normal) + 1e-8)
+    return normals
+
+
 # ---------------------------------------------------------------------------
 # descriptors per ROI (observable pre-GT)
 # ---------------------------------------------------------------------------
 
-def roi_descriptors(model, xyz, roi, cameras, gt_normal_lookup=None):
-    """All observable descriptors.  `gt_normal_lookup` is NOT used here (reserved)."""
+def roi_descriptors(model, xyz, roi, cameras, gt_normal_lookup=None, scene_tree=None):
+    """All observable descriptors.  `gt_normal_lookup` is NOT used here (reserved).
+
+    `scene_tree` is an optional precomputed cKDTree over the FULL scene; it only
+    speeds up identical computations (no semantic change).
+    """
     center = roi["center"]; radius = roi["radius"]
     mask = np.linalg.norm(xyz - center, axis=1) <= radius
     if mask.sum() < 8:
         return None
-    spacing, bnd_idx, bnd_xyz, d_center, n_ball = boundary_support(xyz, mask, center, radius)
+    spacing, bnd_idx, bnd_xyz, d_center, n_ball = boundary_support(
+        xyz, mask, center, radius, scene_tree=scene_tree)
     hole_xyz = xyz[mask]
 
     # --- visibility / support ---
@@ -172,10 +209,14 @@ def roi_descriptors(model, xyz, roi, cameras, gt_normal_lookup=None):
         per_cam_med = np.asarray([np.median(d) for d in depth_per_cam])
         cross_view_depth_std = float(per_cam_med.std() / (per_cam_med.mean() + 1e-9))
     else:
-        n_modes, disc, mode_ent, min_sep, cross_view_depth_std = 1, 0.0, 0.0, 0.0, 0.0
+        n_modes, depth_var, disc, mode_ent, min_sep, cross_view_depth_std = \
+            1, 0.0, 0.0, 0.0, 0.0, 0.0
 
     # --- normal / surface structure ---
-    bnormals = geometry.estimate_normals_local_pca_at(xyz, bnd_idx, k=K_NB)
+    if scene_tree is not None:
+        bnormals = pca_normals_at(xyz, scene_tree, bnd_idx, K_NB)
+    else:
+        bnormals = geometry.estimate_normals_local_pca_at(xyz, bnd_idx, k=K_NB)
     if len(bnormals) >= 4:
         # angular distance matrix -> cluster normals
         c = bnormals.mean(0); c /= np.linalg.norm(c) + 1e-12

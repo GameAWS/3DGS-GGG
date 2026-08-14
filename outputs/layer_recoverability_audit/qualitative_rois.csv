@@ -1,0 +1,11 @@
+group,roi,ambiguity_score,n_depth_modes,n_normal_clusters,n_semantic_ids,cross_modal,gt_category,recover
+high_ambiguity,ramen_sample_001,5,3,8,8,0.5185185185185185,C_multi_object_layered,0
+high_ambiguity,ramen_sample_002,5,3,8,7,0.29577464788732394,C_multi_object_layered,1
+high_ambiguity,ramen_sample_005,5,3,8,4,0.4722222222222222,C_multi_object_layered,0
+high_ambiguity,ramen_sample_006,5,3,8,8,0.5837837837837838,C_multi_object_layered,0
+high_ambiguity,ramen_sample_009,5,3,8,6,0.5615384615384615,C_multi_object_layered,0
+low_ambiguity,roi_C_layered,3,3,6,2,0.7681159420289855,B_multi_surface,0
+low_ambiguity,roi_D_curved_v2,3,3,7,1,0.6857142857142857,B_multi_surface,0
+low_ambiguity,ramen_sample_014,3,3,8,2,0.9423728813559322,B_multi_surface,1
+low_ambiguity,ramen_sample_020,3,3,6,2,0.7254901960784313,B_multi_surface,0
+low_ambiguity,ramen_sample_021,3,3,8,2,0.8245614035087719,B_multi_surface,0

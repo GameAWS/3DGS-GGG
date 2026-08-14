@@ -1,0 +1,2 @@
+note,scenes_available,method,geo_balanced_acc,geo_auroc,hole_only_balanced_acc,vis_only_balanced_acc,layer_only_balanced_acc,vis_and_layer_balanced_acc,majority_balanced_acc
+SINGLE-SCENE: only ramen available; leave-one-scene-out requires figurines/teatime checkpoints,1,logistic_regression,nan,nan,nan,nan,nan,nan,nan
